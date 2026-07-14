@@ -13,9 +13,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ================= CONFIGURAÇÕES DO DISCORD =================
 // Crie uma aplicação em: https://discord.com/developers/applications
 // Adicione em "Redirect URIs": https://SEU_SITE_NO_RENDER.onrender.com/auth/callback
-const CLIENT_ID = process.env.CLIENT_ID || 'SEU_CLIENT_ID';
-const CLIENT_SECRET = process.env.CLIENT_SECRET || 'SEU_CLIENT_SECRET';
-const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3000/auth/callback';
+const CLIENT_ID = process.env.CLIENT_ID || '1526310967238070312';
+const CLIENT_SECRET = process.env.CLIENT_SECRET || 'k_yPYqeYOwS5fuh3fBf6OeWJdV_4ADIr';
+const REDIRECT_URI = process.env.REDIRECT_URI || 'https://larp-0veb.onrender.com/auth/callback';
 
 // ================= BANCO DE DADOS (MEMÓRIA) =================
 const larpData = new Map();
