@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Larp de Pai - Cassino e Larp</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Rajdhani:wght@600;700;900&display=swap');
+
+        :root {
+            --primary: #8b5cf6; /* Violeta Larp */
+            --primary-glow: rgba(139, 92, 246, 0.5);
+            --bg-dark: #09090b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: #e2e8f0;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        h1, h2, h3, .brand-font {
+            font-family: 'Rajdhani', sans-serif;
+            text-transform: uppercase;
+        }
+
+        .text-larp { color: #f59e0b; }
+        .text-larp-shadow { text-shadow: 0 0 10px rgba(245, 158, 11, 0.6); }
+
+        .game-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            background: linear-gradient(180deg, #18181b 0%, #09090b 100%);
+            border: 1px solid #27272a;
+        }
+        .game-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px -5px var(--primary-glow);
+            border-color: var(--primary);
+        }
+
+        /* TIGER SLOT STYLES */
+        .slot-machine {
+            background: radial-gradient(circle at 50% 50%, #7f1d1d, #450a0a);
+            border: 8px solid #f59e0b;
+            box-shadow: 0 0 40px rgba(245,158,11,0.3), inset 0 0 50px rgba(0,0,0,0.8);
+            border-radius: 20px;
+        }
+        .slot-reel {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            height: 240px;
+            border: 2px solid #b45309;
+            position: relative;
+        }
+        .slot-symbols {
+            display: flex;
+            flex-direction: column;
+            transition: transform cubic-bezier(0.15, 0.85, 0.35, 1.2);
+        }
+        .slot-symbol {
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3.5rem;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+        }
+
+        /* SPINNERS (Cases/Battle) */
+        .spinner-container {
+            position: relative; width: 100%; height: 180px; margin: 0 auto;
+            overflow: hidden; background: #080808; border-radius: 12px;
+            border: 1px solid #333; box-shadow: inset 0 0 60px rgba(0,0,0,1);
+        }
+        .center-line {
+            position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #f59e0b; z-index: 10;
+            transform: translateX(-50%); box-shadow: 0 0 15px #f59e0b;
+        }
+        .items-strip { display: flex; height: 100%; align-items: center; will-change: transform; }
+
+        /* MINES */
+        .mine-tile { transition: all 0.2s; cursor: pointer; }
+        .mine-tile:hover { background-color: #27272a; }
+        .mine-tile.revealed { cursor: default; }
+
+        /* BLACKJACK */
+        .playing-card {
+            width: 80px; height: 112px; background: white; border-radius: 6px;
+            display: flex; flex-direction: column; justify-content: space-between; padding: 4px;
+            font-weight: bold; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.3); color: black;
+        }
+
+        .pop-in { animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #555; }
+    </style>
+</head>
+<body>
+
+    <nav class="bg-black/90 backdrop-blur border-b border-white/10 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                <div class="flex items-center gap-6">
+                    <div onclick="router.navigate('home')" class="flex items-center gap-2 cursor-pointer group">
+                        <div class="bg-violet-600/20 p-2 rounded-lg group-hover:bg-violet-600/40 transition">
+                            <i data-lucide="venetian-mask" class="text-violet-500 w-8 h-8"></i>
+                        </div>
+                        <span class="text-2xl font-bold brand-font text-white tracking-wide">LARP<span class="text-violet-500">DE PAI</span></span>
+                    </div>
+                    <div class="hidden md:flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/5" id="nav-links">
+                        <!-- Renderizado via JS -->
+                    </div>
+                </div>
+                <div id="auth-section" class="flex items-center gap-4"></div>
+            </div>
+        </div>
+    </nav>
+
+    <main id="app-root" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 min-h-[80vh]"></main>
+
+    <!-- NOTIFICAÇÃO DE PRISÃO/ERRO -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        // ================= API CLIENT =================
+        const api = {
+            user: null,
+            
+            async init() {
+                try {
+                    const res = await fetch('/api/me');
+                    if (res.ok) this.user = await res.json();
+                } catch(e) {}
+                ui.renderNav();
+                router.navigate('home');
+            },
+
+            async larpar() {
+                const res = await fetch('/api/larpar', { method: 'POST' });
+                const data = await res.json();
+                if (data.error) return ui.toast(data.error, 'error');
+                this.user.larp = data.total;
+                ui.toast(`Você farmou +${data.ganho} Larp! 🎭`, 'success');
+                ui.renderNav();
+            },
+
+            async larpear(targetId) {
+                const res = await fetch('/api/larpear', { 
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ targetId })
+                });
+                const data = await res.json();
+                if (data.error) return ui.toast(data.error, 'error');
+                if (data.prison) {
+                    this.user.prisonUntil = Date.now() + (5 * 60 * 1000);
+                    ui.toast(data.message, 'error');
+                } else {
+                    this.user.larp = data.total;
+                    ui.toast(`O crime compensou! Você roubou ${data.roubado} Larp 🏴‍☠️`, 'success');
+                }
+                ui.renderNav();
+                if (router.current === 'roubar') pages.roubar(document.getElementById('app-root'));
+            },
+
+            async processBet(amount) {
+                if(this.user.prisonUntil > Date.now()) {
+                    ui.toast('Você está na Larprisão e não pode jogar!', 'error'); return false;
+                }
+                if (amount > this.user.larp) {
+                    ui.toast('Larp insuficiente.', 'error'); return false;
+                }
+                const res = await fetch('/api/sync_balance', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ bet: amount, win: 0 })
+                });
+                const data = await res.json();
+                if(data.success) { this.user.larp = data.total; ui.renderNav(); return true; }
+                return false;
+            },
+
+            async addWin(amount) {
+                const res = await fetch('/api/sync_balance', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ bet: 0, win: amount })
+                });
+                const data = await res.json();
+                if(data.success) { this.user.larp = data.total; ui.renderNav(); }
+            }
+        };
+
+        // ================= UI & ROUTER =================
+        const router = {
+            current: '',
+            navigate(page) {
+                const app = document.getElementById('app-root');
+                app.innerHTML = '';
+                this.current = page;
+                if (!api.user && page !== 'home') page = 'home';
+                if (pages[page]) pages[page](app);
+                lucide.createIcons();
+            }
+        };
+
+        const ui = {
+            formatLarp: (n) => `<span class="text-larp font-bold font-mono">🎭 ${Math.floor(n).toLocaleString()}</span>`,
+            
+            toast: (msg, type = 'success') => {
+                const bg = type === 'error' ? 'bg-red-600' : 'bg-emerald-600';
+                const el = document.createElement('div');
+                el.className = `${bg} text-white px-6 py-3 rounded-lg font-bold shadow-2xl pop-in`;
+                el.innerText = msg;
+                document.getElementById('toast-container').appendChild(el);
+                setTimeout(() => el.remove(), 4000);
+            },
+
+            renderNav: () => {
+                const el = document.getElementById('auth-section');
+                const links = document.getElementById('nav-links');
+                
+                if (!api.user) {
+                    links.innerHTML = '';
+                    el.innerHTML = `<button onclick="window.location.href='/auth/login'" class="bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold px-6 py-3 rounded-xl transition flex items-center gap-2 shadow-lg"><i data-lucide="party-popper"></i> LOGIN COM DISCORD</button>`;
+                } else {
+                    links.innerHTML = `
+                        <button onclick="router.navigate('home')" class="px-4 py-2 rounded-md text-sm font-bold transition hover:bg-white/10 text-slate-300">Minigames</button>
+                        <button onclick="router.navigate('roubar')" class="px-4 py-2 rounded-md text-sm font-bold transition hover:bg-white/10 text-red-400">Roubar Larp</button>
+                        <button onclick="router.navigate('leaderboard')" class="px-4 py-2 rounded-md text-sm font-bold transition hover:bg-white/10 text-amber-400">Larptop</button>
+                    `;
+                    let statusInfo = '';
+                    if (api.user.prisonUntil > Date.now()) {
+                        statusInfo = `<div class="bg-red-900/50 border border-red-500 px-3 py-1.5 rounded-lg text-red-400 font-bold text-xs flex items-center gap-1 animate-pulse"><i data-lucide="shield-alert" class="w-4 h-4"></i> PRESO</div>`;
+                    }
+                    el.innerHTML = `
+                        ${statusInfo}
+                        <div class="hidden sm:flex flex-col items-end mr-2">
+                            <div class="font-bold text-white text-sm">${api.user.username}</div>
+                            <div class="text-xs text-slate-400">Nível Deus</div>
+                        </div>
+                        <img src="https://cdn.discordapp.com/avatars/${api.user.id}/${api.user.avatar}.png" class="w-10 h-10 rounded-full border-2 border-violet-500" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                        <div class="bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-lg ml-2 text-lg drop-shadow-md cursor-pointer hover:border-amber-500 transition" title="Seu saldo de Larp">
+                            ${ui.formatLarp(api.user.larp)}
+                        </div>
+                        <button onclick="fetch('/auth/logout').then(()=>window.location.reload())" class="ml-2 text-slate-500 hover:text-white" title="Sair"><i data-lucide="log-out"></i></button>
+                    `;
+                }
+                lucide.createIcons();
+            }
+        };
+
+        // ================= PÁGINAS =================
+        const pages = {
+            home: (container) => {
+                if(!api.user) {
+                    container.innerHTML = `
+                        <div class="flex flex-col items-center justify-center min-h-[60vh] text-center relative">
+                            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-600/10 blur-[120px] rounded-full -z-10"></div>
+                            <h1 class="text-7xl font-black mb-4 text-white drop-shadow-2xl">LARP <span class="text-violet-500">DE PAI</span></h1>
+                            <p class="text-2xl text-amber-500 mb-8 font-black italic uppercase">"Larp é arte, apostar faz parte"</p>
+                            <button onclick="window.location.href='/auth/login'" class="bg-[#5865F2] hover:scale-105 text-white text-xl font-bold px-12 py-5 rounded-2xl transition flex items-center gap-3 shadow-[0_0_40px_rgba(88,101,242,0.4)]">
+                                <i data-lucide="gamepad-2"></i> ENTRAR COM DISCORD
+                            </button>
+                        </div>`;
+                    return;
+                }
+
+                const games = [
+                    { id: 'tiger', name: 'Fortune Tiger', color: 'text-amber-500', icon: 'cat', desc: 'O tigre tá solto, vem forrar!' },
+                    { id: 'crash', name: 'Crash', color: 'text-red-500', icon: 'trending-up', desc: 'Pule fora antes do Larp explodir.' },
+                    { id: 'mines', name: 'Mines', color: 'text-emerald-500', icon: 'bomb', desc: 'Desvie das bombas, pegue o Larp.' },
+                    { id: 'blackjack', name: 'Blackjack', color: 'text-slate-200', icon: 'club', desc: '21 é o número do sucesso.' },
+                    { id: 'jackpot', name: 'Jackpot', color: 'text-fuchsia-500', icon: 'pie-chart', desc: 'O vencedor leva todo o Larp.' },
+                    { id: 'cases', name: 'Caixas Larp', color: 'text-blue-500', icon: 'package-open', desc: 'Abra caixas misteriosas.' }
+                ];
+                
+                container.innerHTML = `
+                    <div class="flex flex-col md:flex-row gap-6 mb-12">
+                        <div class="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl flex-1 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                            <div class="absolute inset-0 bg-violet-500/5 group-hover:bg-violet-500/10 transition"></div>
+                            <i data-lucide="pickaxe" class="w-16 h-16 text-violet-500 mb-4 group-hover:scale-110 transition"></i>
+                            <h2 class="text-3xl font-black italic text-white mb-2">FARMAR LARP</h2>
+                            <p class="text-slate-400 mb-6">Ganhe de 1 a 100 Larp grátis. Cooldown de 30s.</p>
+                            <button onclick="api.larpar()" class="bg-violet-600 hover:bg-violet-500 text-white font-black px-12 py-4 rounded-xl transition w-full shadow-lg relative z-10">LARPAR AGORA</button>
+                        </div>
+                        <div class="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl flex-1 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                            <div class="absolute inset-0 bg-red-500/5 group-hover:bg-red-500/10 transition"></div>
+                            <i data-lucide="swords" class="w-16 h-16 text-red-500 mb-4 group-hover:scale-110 transition"></i>
+                            <h2 class="text-3xl font-black italic text-white mb-2">ROUBAR LARP</h2>
+                            <p class="text-slate-400 mb-6">Aja nas sombras. Roube larp dos seus amigos.</p>
+                            <button onclick="router.navigate('roubar')" class="bg-red-600 hover:bg-red-500 text-white font-black px-12 py-4 rounded-xl transition w-full shadow-lg relative z-10">IR PARA AS SOMBRAS</button>
+                        </div>
+                    </div>
+
+                    <div class="text-center mb-8">
+                        <h2 class="text-4xl font-black italic text-white mb-2">MINIGAMES</h2>
+                        <p class="text-slate-500 uppercase tracking-widest">Multiplique seu Larp</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${games.map(g => `
+                        <div onclick="router.navigate('${g.id}')" class="game-card p-6 rounded-2xl group relative overflow-hidden">
+                            <div class="relative z-10 flex flex-col items-center text-center">
+                                <i data-lucide="${g.icon}" class="w-20 h-20 ${g.color} mb-4 group-hover:scale-110 transition"></i>
+                                <h3 class="text-2xl font-black italic text-white uppercase">${g.name}</h3>
+                                <p class="text-slate-400 mt-2 text-sm">${g.desc}</p>
+                            </div>
+                        </div>
+                        `).join('')}
+                    </div>
+                `;
+            },
+
+            leaderboard: async (container) => {
+                container.innerHTML = `<div class="text-center py-20 text-white"><i data-lucide="loader" class="animate-spin w-10 h-10 mx-auto mb-4"></i> Carregando LarpTop...</div>`;
+                const res = await fetch('/api/leaderboard');
+                const tops = await res.json();
+                
+                let html = `
+                    <div class="max-w-3xl mx-auto">
+                        <div class="text-center mb-10">
+                            <h1 class="text-5xl font-black italic text-white mb-2 text-larp-shadow"><i data-lucide="trophy" class="inline w-12 h-12 text-amber-500 mb-2"></i> LARPTOP</h1>
+                            <p class="text-slate-400">Os maiores larpadores do servidor</p>
+                        </div>
+                        <div class="space-y-3">
+                `;
+                
+                const medals = ['🥇', '🥈', '🥉'];
+                tops.forEach((u, i) => {
+                    const badge = i < 3 ? `<span class="text-3xl">${medals[i]}</span>` : `<span class="text-xl font-bold text-slate-500 w-8 text-center">#${i+1}</span>`;
+                    html += `
+                        <div class="bg-zinc-900 border ${i===0?'border-amber-500':'border-zinc-800'} p-4 rounded-xl flex items-center justify-between shadow-lg">
+                            <div class="flex items-center gap-4">
+                                ${badge}
+                                <img src="https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png" class="w-12 h-12 rounded-lg" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                                <div class="font-bold text-white text-lg">${u.username}</div>
+                            </div>
+                            <div class="text-xl">${ui.formatLarp(u.larp)}</div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+                container.innerHTML = html;
+                lucide.createIcons();
+            },
+
+            roubar: async (container) => {
+                container.innerHTML = `<div class="text-center py-20 text-white"><i data-lucide="loader" class="animate-spin w-10 h-10 mx-auto mb-4"></i> Buscando alvos...</div>`;
+                const res = await fetch('/api/users');
+                const users = await res.json();
+                
+                let html = `
+                    <div class="max-w-5xl mx-auto">
+                        <div class="flex items-center gap-4 mb-8">
+                            <button onclick="router.navigate('home')" class="text-slate-500 hover:text-white"><i data-lucide="arrow-left"></i></button>
+                            <div>
+                                <h1 class="text-4xl font-black italic text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]">BECO ESCURO</h1>
+                                <p class="text-slate-400">Selecione uma vítima. Risco de 75% de ir para a Larprisão (5 min).</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                `;
+
+                if(users.length === 0) html += `<div class="col-span-full text-center text-slate-500 py-10">Ninguém tem Larp para roubar agora. 😔</div>`;
+
+                users.forEach(u => {
+                    html += `
+                        <div onclick="api.larpear('${u.id}')" class="bg-zinc-900 border border-zinc-800 hover:border-red-500 p-6 rounded-xl cursor-pointer group transition flex items-center gap-4 relative overflow-hidden">
+                            <div class="absolute inset-0 bg-red-500/0 group-hover:bg-red-500/10 transition"></div>
+                            <img src="https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png" class="w-16 h-16 rounded-full border-2 border-zinc-700 group-hover:border-red-500 transition relative z-10" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+                            <div class="relative z-10 flex-1">
+                                <div class="font-bold text-white text-lg truncate">${u.username}</div>
+                                <div class="text-sm">${ui.formatLarp(u.larp)}</div>
+                            </div>
+                            <i data-lucide="swords" class="text-zinc-700 group-hover:text-red-500 transition relative z-10"></i>
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+                container.innerHTML = html;
+                lucide.createIcons();
+            },
+
+            // ================= MINIGAMES =================
+            tiger: (container) => {
+                container.innerHTML = `
+                    <div class="max-w-4xl mx-auto">
+                        <div class="flex items-center gap-4 mb-6">
+                            <button onclick="router.navigate('home')" class="text-slate-500 hover:text-white"><i data-lucide="arrow-left"></i></button>
+                            <h1 class="text-4xl font-black italic text-amber-500">FORTUNE TIGER</h1>
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
+                            <div class="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 flex flex-col gap-6">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-500 uppercase">Aposta (Larp)</label>
+                                    <div class="flex items-center bg-black border border-zinc-700 rounded-lg px-4 py-3 mt-1">
+                                        <span class="text-amber-500 mr-2">🎭</span>
+                                        <input type="number" id="tiger-bet" value="50" min="1" class="bg-transparent text-white font-bold w-full outline-none">
+                                    </div>
+                                </div>
+                                <div class="bg-black/50 p-4 rounded-xl border border-zinc-800 space-y-2 text-sm text-slate-400">
+                                    <div class="flex justify-between font-bold text-white border-b border-zinc-700 pb-2 mb-2"><span>Tabela de Pagamento (Trinca)</span></div>
+                                    <div class="flex justify-between"><span>🐯 Tigre (Wild)</span><span class="text-amber-500">20x</span></div>
+                                    <div class="flex justify-between"><span>💰 Saco de Ouro</span><span class="text-amber-500">10x</span></div>
+                                    <div class="flex justify-between"><span>🧧 Envelope</span><span class="text-amber-500">5x</span></div>
+                                    <div class="flex justify-between"><span>🏮 Lanterna</span><span class="text-amber-500">3x</span></div>
+                                    <div class="flex justify-between"><span>🍊 Laranja</span><span class="text-amber-500">1.5x</span></div>
+                                </div>
+                                <button id="btn-tiger-spin" onclick="tigerGame.spin()" class="w-full bg-gradient-to-b from-amber-400 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-black font-black text-2xl py-5 rounded-xl transition uppercase shadow-[0_0_20px_rgba(245,158,11,0.4)] mt-auto">GIRAR!</button>
+                            </div>
+
+                            <div class="lg:col-span-2 flex justify-center">
+                                <div class="slot-machine p-6 w-full max-w-[500px]">
+                                    <div class="flex gap-4">
+                                        <div class="slot-reel flex-1" id="reel-0"><div class="slot-symbols" id="strip-0"></div></div>
+                                        <div class="slot-reel flex-1" id="reel-1"><div class="slot-symbols" id="strip-1"></div></div>
+                                        <div class="slot-reel flex-1" id="reel-2"><div class="slot-symbols" id="strip-2"></div></div>
+                                    </div>
+                                    <div class="mt-6 text-center h-12 flex items-center justify-center">
+                                        <h2 id="tiger-result" class="text-3xl font-black italic text-amber-400 drop-shadow-[0_0_10px_#f59e0b] hidden pop-in">GRANDE GANHO!</h2>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                tigerGame.init();
+            },
+
+            crash: (container) => {
+                container.innerHTML = `
+                    <div class="max-w-4xl mx-auto">
+                        <div class="flex items-center gap-4 mb-6">
+                            <button onclick="router.navigate('home')" class="text-slate-500 hover:text-white"><i data-lucide="arrow-left"></i></button>
+                            <h1 class="text-3xl font-black italic text-red-500">CRASH</h1>
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[500px]">
+                            <div class="bg-zinc-900 p-6 rounded-xl border border-zinc-800 flex flex-col gap-4">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-500 uppercase">Aposta (Larp)</label>
+                                    <div class="flex items-center bg-black border border-zinc-700 rounded-lg px-4 py-3 mt-1">
+                                        <span class="text-amber-500 mr-2">🎭</span>
+                                        <input type="number" id="crash-bet" value="50" min="1" class="bg-transparent text-white font-bold w-full outline-none">
+                                    </div>
+                                </div>
+                                <button id="btn-crash-action" onclick="crashGame.action()" class="w-full bg-red-600 hover:bg-red-500 text-white font-black text-xl py-6 rounded-xl transition uppercase mt-auto">APOSTAR</button>
+                            </div>
+                            <div class="lg:col-span-2 bg-black rounded-xl border border-zinc-800 relative overflow-hidden flex flex-col">
+                                <div class="absolute inset-0 flex items-center justify-center z-10 pointer-events-none text-center">
+                                    <span id="crash-multiplier" class="text-7xl font-black text-white font-mono drop-shadow-lg">1.00x</span>
+                                    <div id="crash-status" class="text-red-500 font-bold uppercase tracking-widest mt-2 hidden absolute top-[70%] w-full">Lucro Atual</div>
+                                </div>
+                                <canvas id="crash-canvas" class="w-full h-full z-0"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                crashGame.init();
+            },
+
+            mines: (container) => {
+                container.innerHTML = `
+                    <div class="max-w-4xl mx-auto">
+                        <div class="flex items-center gap-4 mb-6">
+                            <button onclick="router.navigate('home')" class="text-slate-500 hover:text-white"><i data-lucide="arrow-left"></i></button>
+                            <h1 class="text-3xl font-black italic text-emerald-500">MINES</h1>
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div class="bg-zinc-900 p-6 rounded-xl border border-zinc-800 flex flex-col gap-6">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-500 uppercase">Aposta</label>
+                                    <div class="flex items-center bg-black border border-zinc-700 rounded-lg px-4 py-3 mt-1">
+                                        <span class="text-amber-500 mr-2">🎭</span>
+                                        <input type="number" id="mines-bet" value="20" min="1" class="bg-transparent text-white font-bold w-full outline-none">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-500 uppercase">Bombas (1-24)</label>
+                                    <div class="flex items-center bg-black border border-zinc-700 rounded-lg px-4 py-3 mt-1">
+                                        <i data-lucide="bomb" class="w-4 h-4 text-red-500 mr-2"></i>
+                                        <input type="number" id="mines-count" value="3" min="1" max="24" class="bg-transparent text-white font-bold w-full outline-none">
+                                    </div>
+                                </div>
+                                <div class="bg-black/50 p-4 rounded-lg border border-zinc-800">
+                                    <div class="flex justify-between mb-1"><span class="text-slate-500 text-xs">Próximo Mult</span><span id="mines-next-mult" class="text-emerald-400 font-mono font-bold">1.00x</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-500 text-xs">Lucro Atual</span><span id="mines-profit" class="text-amber-500 font-mono font-bold">0 Larp</span></div>
+                                </div>
+                                <button id="btn-mines-start" onclick="minesGame.startGame()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xl py-4 rounded-xl transition uppercase mt-auto">JOGAR</button>
+                                <button id="btn-mines-cashout" onclick="minesGame.cashout()" class="hidden w-full bg-amber-600 hover:bg-amber-500 text-black font-black text-xl py-4 rounded-xl transition uppercase mt-auto">SACAR</button>
+                            </div>
+                            <div class="lg:col-span-2 bg-zinc-900 p-6 rounded-xl border border-zinc-800 flex items-center justify-center">
+                                <div id="mines-grid" class="grid grid-cols-5 gap-3 w-full max-w-[400px]"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                minesGame.renderGrid();
+            }
+        };
+
+        // ================= LÓGICAS DOS MINIGAMES =================
+
+        // --- FORTUNE TIGER ---
+        const tigerGame = {
+            symbols: [
+                { id: 'tiger', icon: '🐯', mult: 20 },
+                { id: 'gold', icon: '💰', mult: 10 },
+                { id: 'env', icon: '🧧', mult: 5 },
+                { id: 'lant', icon: '🏮', mult: 3 },
+                { id: 'oran', icon: '🍊', mult: 1.5 }
+            ],
+            strips: [[], [], []],
+            active: false,
+
+            init() {
+                for(let i=0; i<3; i++) {
+                    const strip = document.getElementById(`strip-${i}`);
+                    strip.innerHTML = '';
+                    let html = '';
+                    for(let j=0; j<20; j++) {
+                        const s = this.symbols[Math.floor(Math.random() * this.symbols.length)];
+                        html += `<div class="slot-symbol">${s.icon}</div>`;
+                    }
+                    strip.innerHTML = html;
+                    strip.style.transform = `translateY(0px)`;
+                }
+            },
+
+            async spin() {
+                if(this.active) return;
+                const bet = parseInt(document.getElementById('tiger-bet').value);
+                if(isNaN(bet) || bet <= 0) return ui.toast('Aposta inválida', 'error');
+
+                const success = await api.processBet(bet);
+                if(!success) return;
+
+                this.active = true;
+                const btn = document.getElementById('btn-tiger-spin');
+                const resEl = document.getElementById('tiger-result');
+                btn.disabled = true;
+                resEl.classList.add('hidden');
+
+                // Generate result grid (3x3)
+                const grid = [];
+                for(let row=0; row<3; row++) {
+                    grid[row] = [];
+                    for(let col=0; col<3; col++) {
+                        // Weighted logic to make it realistic
+                        let rnd = Math.random();
+                        let s;
+                        if(rnd > 0.95) s = this.symbols[0];
+                        else if(rnd > 0.85) s = this.symbols[1];
+                        else if(rnd > 0.6) s = this.symbols[2];
+                        else if(rnd > 0.3) s = this.symbols[3];
+                        else s = this.symbols[4];
+                        grid[row][col] = s;
+                    }
+                }
+
+                // Animate reels
+                const reelSpins = [3, 4, 5]; // Seconds to spin
+                for(let col=0; col<3; col++) {
+                    const strip = document.getElementById(`strip-${col}`);
+                    // Fill end of strip with result
+                    let newHtml = '';
+                    for(let j=0; j<17; j++) {
+                        newHtml += `<div class="slot-symbol">${this.symbols[Math.floor(Math.random() * this.symbols.length)].icon}</div>`;
+                    }
+                    // Insert the 3 result rows at the very end
+                    for(let row=0; row<3; row++) {
+                        newHtml += `<div class="slot-symbol">${grid[row][col].icon}</div>`;
+                    }
+                    strip.innerHTML = newHtml;
+                    
+                    // Reset position without transition
+                    strip.style.transition = 'none';
+                    strip.style.transform = `translateY(0px)`;
+                    
+                    // Force reflow
+                    strip.offsetHeight;
+
+                    // Spin
+                    strip.style.transition = `transform ${reelSpins[col]}s cubic-bezier(0.15, 0.85, 0.35, 1)`;
+                    strip.style.transform = `translateY(-${17 * 80}px)`; // 80px per symbol
+                }
+
+                // Evaluate after last reel stops
+                setTimeout(async () => {
+                    let totalMult = 0;
+                    
+                    // Check lines (3 Horizontal)
+                    for(let r=0; r<3; r++) {
+                        if(grid[r][0].id === grid[r][1].id && grid[r][1].id === grid[r][2].id) {
+                            totalMult += grid[r][0].mult;
+                        } else if(grid[r].some(s => s.id === 'tiger')) {
+                            // Wild logic simplified
+                            const base = grid[r].find(s => s.id !== 'tiger') || this.symbols[0];
+                            if(grid[r].every(s => s.id === base.id || s.id === 'tiger')) totalMult += base.mult;
+                        }
+                    }
+
+                    if(totalMult > 0) {
+                        const win = Math.floor(bet * totalMult);
+                        await api.addWin(win);
+                        resEl.innerText = `GANHOU ${ui.formatLarp(win)}!`;
+                        resEl.classList.remove('hidden');
+                    }
+
+                    this.active = false;
+                    btn.disabled = false;
+                }, 5200);
+            }
+        };
+
+        // --- CRASH ---
+        const crashGame = {
+            running: false, multiplier: 1.00, crashPoint: 0, bet: 0, cashedOut: false, canvas: null, ctx: null,
+
+            init() {
+                const cvs = document.getElementById('crash-canvas');
+                cvs.width = cvs.parentElement.offsetWidth; cvs.height = cvs.parentElement.offsetHeight;
+                this.canvas = cvs; this.ctx = cvs.getContext('2d');
+                this.reset();
+            },
+
+            reset() {
+                this.running = false; this.multiplier = 1.00; this.cashedOut = false;
+                const mEl = document.getElementById('crash-multiplier');
+                mEl.innerText = "1.00x"; mEl.className = "text-7xl font-black text-white font-mono drop-shadow-lg";
+                document.getElementById('btn-crash-action').innerText = "APOSTAR";
+                document.getElementById('btn-crash-action').className = "w-full bg-red-600 hover:bg-red-500 text-white font-black text-xl py-6 rounded-xl transition uppercase mt-auto";
+                document.getElementById('btn-crash-action').disabled = false;
+                this.drawGraph(0);
+            },
+
+            async action() {
+                if (!this.running) {
+                    const bet = parseInt(document.getElementById('crash-bet').value);
+                    if (isNaN(bet) || bet <= 0) return ui.toast("Aposta inválida", "error");
+                    const success = await api.processBet(bet);
+                    if(success) { this.bet = bet; this.startGame(); }
+                } else {
+                    this.doCashout();
+                }
+            },
+
+            startGame() {
+                this.running = true;
+                const r = Math.random();
+                this.crashPoint = Math.max(1.00, 0.99 / (1 - r)); // Bot logic typical crash math
+                if(Math.random() < 0.05) this.crashPoint = 1.00; // Insta crash
+
+                document.getElementById('btn-crash-action').innerText = "SACAR";
+                document.getElementById('btn-crash-action').className = "w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xl py-6 rounded-xl transition uppercase mt-auto";
+                
+                let startTime = Date.now();
+                const loop = () => {
+                    if (!this.running || router.current !== 'crash') return;
+                    
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    this.multiplier = 1 + (0.06 * elapsed) + Math.pow(elapsed, 2) * 0.04; 
+
+                    document.getElementById('crash-multiplier').innerText = this.multiplier.toFixed(2) + 'x';
+                    
+                    if (!this.cashedOut) {
+                        const currentWin = Math.floor(this.bet * this.multiplier);
+                        document.getElementById('crash-status').innerText = `LUCRO: 🎭 ${currentWin}`;
+                        document.getElementById('crash-status').classList.remove('hidden');
+                    }
+
+                    if (this.multiplier >= this.crashPoint) {
+                        this.bust();
+                    } else {
+                        this.drawGraph(elapsed);
+                        requestAnimationFrame(loop);
+                    }
+                };
+                requestAnimationFrame(loop);
+            },
+
+            async doCashout() {
+                if(!this.running || this.cashedOut) return;
+                this.cashedOut = true;
+                const win = Math.floor(this.bet * this.multiplier);
+                await api.addWin(win);
+                
+                document.getElementById('btn-crash-action').innerText = "SACOU!";
+                document.getElementById('btn-crash-action').disabled = true;
+                document.getElementById('crash-multiplier').classList.replace('text-white', 'text-emerald-500');
+                document.getElementById('crash-status').innerText = `GANHOU 🎭 ${win}`;
+            },
+
+            bust() {
+                this.running = false;
+                const mEl = document.getElementById('crash-multiplier');
+                mEl.innerText = `CRASHOU @ ${this.multiplier.toFixed(2)}x`;
+                mEl.classList.replace('text-white', 'text-red-500');
+                mEl.classList.replace('text-emerald-500', 'text-red-500');
+                document.getElementById('crash-status').classList.add('hidden');
+                
+                if (!this.cashedOut) {
+                    const btn = document.getElementById('btn-crash-action');
+                    btn.innerText = "PERDEU";
+                    btn.className = "w-full bg-zinc-800 text-zinc-500 font-black text-xl py-6 rounded-xl mt-auto cursor-not-allowed";
+                }
+                setTimeout(() => this.reset(), 3000);
+            },
+
+            drawGraph(progress) {
+                const {ctx, canvas} = this;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.beginPath();
+                ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+                let x = Math.min(canvas.width, progress * 50); 
+                let y = canvas.height - (Math.min(canvas.height, (this.multiplier - 1) * 100));
+                ctx.quadraticCurveTo(x/2, canvas.height, x, y);
+                ctx.stroke();
+                ctx.lineTo(x, canvas.height); ctx.lineTo(0, canvas.height);
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.1)'; ctx.fill();
+            }
+        };
+
+        // --- MINES ---
+        const minesGame = {
+            active: false, bet: 0, minesCount: 3, grid: [], revealed: [], currentMult: 1.00,
+
+            renderGrid() {
+                const container = document.getElementById('mines-grid');
+                container.innerHTML = '';
+                for(let i=0; i<25; i++) {
+                    const btn = document.createElement('button');
+                    btn.className = "mine-tile w-full h-16 bg-zinc-800 rounded-lg border-b-4 border-zinc-700 flex items-center justify-center text-2xl relative overflow-hidden";
+                    btn.id = `mine-${i}`;
+                    btn.onclick = () => this.clickTile(i);
+                    container.appendChild(btn);
+                }
+                lucide.createIcons();
+            },
+
+            async startGame() {
+                if(this.active) return;
+                const bet = parseInt(document.getElementById('mines-bet').value);
+                const count = parseInt(document.getElementById('mines-count').value);
+
+                if(isNaN(bet) || bet <= 0) return ui.toast("Aposta inválida", "error");
+                if(isNaN(count) || count < 1 || count > 24) return ui.toast("Bombas inválidas", "error");
+
+                const success = await api.processBet(bet);
+                if(!success) return;
+
+                this.bet = bet; this.minesCount = count; this.active = true;
+                this.revealed = Array(25).fill(false); this.currentMult = 1.00;
+                
+                this.grid = Array(25).fill(0);
+                let placed = 0;
+                while(placed < count) {
+                    const idx = Math.floor(Math.random() * 25);
+                    if(this.grid[idx] === 0) { this.grid[idx] = 1; placed++; }
+                }
+
+                this.renderGrid();
+                document.getElementById('btn-mines-start').classList.add('hidden');
+                document.getElementById('btn-mines-cashout').classList.remove('hidden');
+                this.updateStats();
+            },
+
+            clickTile(idx) {
+                if(!this.active || this.revealed[idx]) return;
+                const tile = document.getElementById(`mine-${idx}`);
+                
+                if(this.grid[idx] === 1) {
+                    tile.classList.add('bg-red-500', 'border-red-700');
+                    tile.innerHTML = '<i data-lucide="bomb" class="text-white animate-bounce"></i>';
+                    this.gameOver(false);
+                } else {
+                    this.revealed[idx] = true;
+                    tile.classList.add('bg-zinc-700', 'border-zinc-600', 'revealed');
+                    tile.innerHTML = '<i data-lucide="gem" class="text-emerald-400 pop-in"></i>';
+                    
+                    const revealedCount = this.revealed.filter(Boolean).length;
+                    const remainingTotal = 25 - (revealedCount - 1);
+                    const remainingSafe = (25 - this.minesCount) - (revealedCount - 1);
+                    this.currentMult *= (remainingTotal / remainingSafe) * 0.99;
+
+                    if(revealedCount === (25 - this.minesCount)) this.cashout(); 
+                    else this.updateStats();
+                }
+                lucide.createIcons();
+            },
+
+            updateStats() {
+                const total = Math.floor(this.bet * this.currentMult);
+                const profit = total - this.bet;
+                
+                document.getElementById('mines-profit').innerHTML = ui.formatLarp(profit > 0 ? profit : 0);
+                document.getElementById('btn-mines-cashout').innerText = `SACAR 🎭 ${total}`;
+                
+                const revealedCount = this.revealed.filter(Boolean).length;
+                const nextStep = ((25 - revealedCount) / ((25 - this.minesCount) - revealedCount)) * 0.99;
+                document.getElementById('mines-next-mult').innerText = (this.currentMult * nextStep).toFixed(2) + 'x';
+            },
+
+            async cashout() {
+                if(!this.active) return;
+                const win = Math.floor(this.bet * this.currentMult);
+                await api.addWin(win);
+                this.gameOver(true, win);
+            },
+
+            gameOver(win, winAmount = 0) {
+                this.active = false;
+                this.grid.forEach((isMine, i) => {
+                    const tile = document.getElementById(`mine-${i}`);
+                    if(isMine) {
+                        tile.innerHTML = '<i data-lucide="bomb" class="text-white/50"></i>';
+                        if(!win) tile.classList.add('bg-red-900/50');
+                    } else if(!this.revealed[i]) {
+                        tile.classList.add('opacity-50');
+                    }
+                });
+
+                document.getElementById('btn-mines-start').classList.remove('hidden');
+                document.getElementById('btn-mines-cashout').classList.add('hidden');
+                lucide.createIcons();
+                if(win) ui.toast(`Você lucrou 🎭 ${winAmount}!`, 'success');
+            }
+        };
+
+        // Inicia o app
+        api.init();
+    </script>
+</body>
+</html>
